@@ -1113,7 +1113,8 @@ class _AdminPageState extends State<AdminPage> {
                   style: const TextStyle(
                       fontSize: 16, fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
-              Text('${ad.location}  •  ${ad.price.isEmpty ? "No price" : ad.price}',
+              Text(
+                  '${ad.location}  •  ${ad.price.isEmpty ? "No price" : ad.price}',
                   style: const TextStyle(color: Colors.black54, fontSize: 13)),
               if (ad.description.isNotEmpty) ...[
                 const SizedBox(height: 6),
@@ -1173,19 +1174,21 @@ class ProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!cloudEnabled) return _shell(_signedOut(context, localMode: true));
+    if (!cloudEnabled) {
+      return _shell(context, _signedOut(context, localMode: true));
+    }
 
     return StreamBuilder<AuthState>(
       stream: sb.auth.onAuthStateChange,
       builder: (context, _) {
         final user = sb.auth.currentUser;
-        if (user == null) return _shell(_signedOut(context));
-        return _shell(_signedIn(context, user));
+        if (user == null) return _shell(context, _signedOut(context));
+        return _shell(context, _signedIn(context, user));
       },
     );
   }
 
-  Widget _shell(Widget child) => ListView(
+  Widget _shell(BuildContext context, Widget child) => ListView(
         padding: const EdgeInsets.all(20),
         children: [
           const CircleAvatar(
