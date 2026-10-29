@@ -24,6 +24,7 @@ SupabaseClient get sb => Supabase.instance.client;
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (cloudEnabled) {
+    // ignore: deprecated_member_use
     await Supabase.initialize(url: _supabaseUrl, anonKey: _supabaseAnonKey);
   }
   runApp(const LandMetricsApp());
