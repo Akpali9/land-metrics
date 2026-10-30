@@ -62,6 +62,7 @@ class _GateState extends State<Gate> {
     if (m == null) {
       return Scaffold(body: Center(child: Padding(padding: const EdgeInsets.all(32), child: Column(mainAxisSize: MainAxisSize.min, children: [const Logo(s: 80), const SizedBox(height: 16), const Text('We could not load your profile. Make sure the database setup (schema.sql) has been run.', textAlign: TextAlign.center), const SizedBox(height: 16), Btn('Try again', onTap: _load), Btn('Log out', outline: true, onTap: () => sb.auth.signOut())]))));
     }
+    if (m['is_blocked'] == true) return Scaffold(body: Center(child: Padding(padding: const EdgeInsets.all(28), child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.block, size: 52, color: Colors.red), const SizedBox(height: 12), const Text('Your account has been temporarily restricted. Please contact support.', textAlign: TextAlign.center), const SizedBox(height: 16), Btn('Log out', onTap: () => sb.auth.signOut())]))));
     return m['role'] == 'admin' ? AdminShell(me: m) : UserShell(me: m);
   }
 }

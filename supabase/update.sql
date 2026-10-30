@@ -20,3 +20,8 @@ update settings set value = substr(md5(random()::text),1,10) where key='admin_co
 
 -- admins can delete ads
 create policy d3 on ads for delete to authenticated using(is_admin());
+
+-- Admins can delete public announcements (global notifications only).
+drop policy if exists notifications_admin_delete on public.notifications;
+create policy notifications_admin_delete on public.notifications
+for delete to authenticated using (is_admin() and user_id is null);

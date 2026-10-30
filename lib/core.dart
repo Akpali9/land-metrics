@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 final sb = Supabase.instance.client;
 typedef Json = Map<String, dynamic>;
@@ -177,4 +178,13 @@ class _ShellState extends State<Shell> {
         body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: widget.tabs[i].$3()))),
         bottomNavigationBar: NavigationBar(selectedIndex: i, onDestinationSelected: (v) => setState(() => i = v), destinations: [for (final t in widget.tabs) NavigationDestination(icon: Icon(t.$2), label: t.$1)]),
       );
+}
+
+Future<void> openPrivateFile(String path, BuildContext context) async {
+  try {
+    final url = await sb.storage.from('land-documents').createSignedUrl(path, 600);
+    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  } catch (e) {
+    if (context.mounted) toast(context, 'Could not open document: $e');
+  }
 }
