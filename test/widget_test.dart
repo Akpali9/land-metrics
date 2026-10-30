@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:land_metrics/core.dart';
+import 'package:landmetrics/core.dart';
 
 void main() {
   test('naira formats amounts', () {
