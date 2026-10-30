@@ -29,7 +29,11 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
-        
+      - name: Generate app icons
+        run: dart run flutter_launcher_icons
+
+      - name: Generate splash screen
+        run: dart run flutter_native_splash:create
       - name: Ensure Android platform scaffolding
         run: flutter create --platforms=android .
 
