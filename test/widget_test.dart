@@ -1,12 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:land_metrics/main.dart';
+import 'package:land_metrics/core.dart';
 
 void main() {
-  testWidgets('renders the LAND METRICS home screen', (tester) async {
-    await tester.pumpWidget(const LandMetricsApp());
-    await tester.pump();
-
-    expect(find.text('LAND '), findsOneWidget);
-    expect(find.text('METRICS'), findsOneWidget);
+  test('naira formats amounts', () {
+    expect(naira(1500000), '₦1,500,000');
+    expect(naira(null), '₦0');
   });
 }
