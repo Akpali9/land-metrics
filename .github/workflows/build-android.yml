@@ -21,8 +21,8 @@ jobs:
           cache: true
 
       - name: Create Android project files
-        run: flutter create --org com.landmetrics --project-name landmetrics --platforms android .
-
+        run: flutter create --org com.landmetrics --project-name landmetrics --platforms android,ios .
+      
       - name: Add internet permission
         run: |
           grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml || \
