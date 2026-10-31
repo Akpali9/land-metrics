@@ -1,4 +1,3 @@
-
 name: Build LAND METRICS Android APK
 
 on:
@@ -29,7 +28,7 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Create Android Project Files
+      - name: Create Android Project
         run: |
           if [ ! -f android/app/src/main/AndroidManifest.xml ]; then
             flutter create \
@@ -46,21 +45,21 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
-      - name: Generate App Icons
+      - name: Generate Android Icons
         run: dart run flutter_launcher_icons
 
       - name: Generate Splash Screen
         run: dart run flutter_native_splash:create
 
-      - name: Analyze Flutter Project
+      - name: Analyze Project
         run: flutter analyze --no-fatal-infos
 
-      - name: Build Release APK
+      - name: Build Android APK
         run: flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: land-metrics-apk
+          name: LAND-METRICS-APK
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
