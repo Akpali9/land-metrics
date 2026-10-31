@@ -3,8 +3,8 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core.dart';
 
@@ -12,13 +12,12 @@ class UserShell extends StatelessWidget {
   final Json me;
   const UserShell({super.key, required this.me});
   @override
-  Widget build(BuildContext c) => Shell(tabs: [
+  Widget build(BuildContext c) => Shell(me: me, tabs: [
         ('Explore', Icons.explore_rounded, () => Explore(me: me)),
         ('Sell', Icons.add_business_rounded, () => Sell(me: me)),
         ('Services', Icons.verified_rounded, () => Services(me: me)),
         ('Dashboard', Icons.insights_rounded, () => Dash(me: me)),
         ('Chat', Icons.chat_bubble_rounded, () => Column(children: [head(c, 'Chat with support'), Expanded(child: ChatView(me: me, uid: me['id']))])),
-        ('Profile', Icons.account_circle_rounded, () => ProfilePage(me: me)),
       ]);
 }
 
@@ -36,10 +35,8 @@ class _ExploreState extends State<Explore> {
     final r = await Future.wait<dynamic>([
       sb.from('lands').select().eq('status', 'live').order('created_at', ascending: false),
       sb.from('ads').select().order('created_at', ascending: false).limit(6),
-      sb.from('notifications').select().order('created_at', ascending: false).limit(3),
-      sb.from('lands').select('id').eq('seller_id', widget.me['id']),
     ]);
-    return {'lands': r[0], 'ads': r[1], 'notes': r[2], 'mine': r[3]};
+    return {'lands': r[0], 'ads': r[1]};
   }
 
   @override
@@ -47,10 +44,8 @@ class _ExploreState extends State<Explore> {
         final ql = q.toLowerCase();
         final lands = rows(d['lands']).where((l) => (kind == 'all' || l['kind'] == kind) && (ql.isEmpty || '${l['title']} ${l['location']}'.toLowerCase().contains(ql))).toList();
         final ads = rows(d['ads']);
-        final seller = rows(d['mine']).isNotEmpty;
         return ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.only(bottom: 24), children: [
           if (ads.isNotEmpty) AdCarousel(ads: ads),
-          StreamBuilder<Rows>(stream: sb.from('notifications').stream(primaryKey: ['id']).order('created_at', ascending: false), builder: (c, snap) { final notes = snap.data ?? rows(d['notes']); return Column(children: [for (final n in notes.take(5)) Surface(color: const Color(0x1AD9A520), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [const Icon(Icons.notifications_active_rounded, color: K.gold), const SizedBox(width: 10), Expanded(child: Text('${n['body']}'))]))]); }),
           TextField(onChanged: (v) => setState(() => q = v), decoration: const InputDecoration(hintText: 'Search by title or location', prefixIcon: Icon(Icons.search_rounded))),
           const SizedBox(height: 10),
           SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [for (final k in ['all', 'land', 'property']) Padding(padding: const EdgeInsets.only(right: 8), child: ChoiceChip(label: Text(k == 'all' ? 'All' : '${k[0].toUpperCase()}${k.substring(1)}s'), selected: kind == k, onSelected: (_) => setState(() => kind = k)))])),
@@ -106,13 +101,14 @@ class LandCard extends StatelessWidget {
       SizedBox(height: 190, width: double.infinity, child: Stack(fit: StackFit.expand, children: [
         NetImg(imgs.isEmpty ? null : imgs.first as String),
         const Positioned(top: 12, left: 12, child: Pill('✓ Verified')),
-        Positioned(top: 12, right: 12, child: Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3), decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(99)), child: Text('${land['kind']}'.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)))),
+        Positioned(top: 12, right: 12, child: Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3), decoration: BoxDecoration(color: kindColor('${land['kind']}'), borderRadius: BorderRadius.circular(99)), child: Text('${land['kind']}'.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)))),
       ])),
       Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('${land['title']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
         const SizedBox(height: 4),
         Row(children: [const Icon(Icons.place_outlined, size: 15, color: Colors.grey), const SizedBox(width: 4), Expanded(child: grey('${land['location'] ?? ''} · ${land['size_sqm'] ?? '—'} sqm'))]),
         const SizedBox(height: 8),
+        if (chips(land).isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 8), child: Wrap(spacing: 6, runSpacing: 6, children: [for (final x in chips(land)) Pill(x)])),
         Text(naira(numOf(land['price'])), style: const TextStyle(color: K.green, fontWeight: FontWeight.w900, fontSize: 21)),
       ])),
     ]));
@@ -131,7 +127,7 @@ class LandDetail extends StatelessWidget {
       body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: ListView(padding: const EdgeInsets.all(16), children: [
         Gallery(imgs: (land['images'] as List?) ?? [], h: 260),
         const SizedBox(height: 16),
-        Row(children: [Pill('${land['kind']}'.toUpperCase()), const SizedBox(width: 8), const Pill('✓ Verified')]),
+        Wrap(spacing: 8, runSpacing: 6, children: [Pill('${land['kind']}'.toUpperCase()), const Pill('✓ Verified'), for (final x in chips(land)) Pill(x)]),
         const SizedBox(height: 10),
         Text('${land['title']}', style: Theme.of(c).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
         const SizedBox(height: 4),
@@ -174,7 +170,7 @@ class _PaySheetState extends State<PaySheet> {
     setState(() => busy = true);
     try {
       final url = proof == null ? null : await uploadImage(proof!);
-      await sb.from('payments').insert({'land_id': widget.land['id'], 'type': widget.type, 'proof_url': url, 'bank_name_snapshot': s['bank_name'], 'account_name_snapshot': s['account_name'], 'account_number_snapshot': s['account_number']});
+      await sb.from('payments').insert({'land_id': widget.land['id'], 'type': widget.type, 'proof_url': url});
       if (!mounted) return;
       toast(context, 'Payment submitted. An admin will verify it shortly.');
       Navigator.pop(context, true);
@@ -227,7 +223,6 @@ class Sell extends StatelessWidget {
         const st = {'pending': 'In review', 'approved': 'Approved', 'live': 'Live', 'sold': 'Sold', 'rejected': 'Rejected'};
         return ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.only(bottom: 24), children: [
           head(c, 'Sell land or property'),
-          Surface(gradient: kGradient, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('List a property with confidence', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w900)), const SizedBox(height: 5), const Text('Choose the listing type below. Add clear photos, ownership details and an asking price.', style: TextStyle(color: Colors.white70))])),
           NewListing(onDone: reload),
           sub('My listings'),
           if (rows(d['lands']).isEmpty) empty(Icons.sell_outlined, 'No listings yet.'),
@@ -239,7 +234,6 @@ class Sell extends StatelessWidget {
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${l['title']}', style: const TextStyle(fontWeight: FontWeight.w800)), grey('${naira(numOf(l['price']))} · you receive ${naira(numOf(l['price']) * .9)}')])),
                 Pill(st[l['status']] ?? '${l['status']}', warn: l['status'] != 'live' && l['status'] != 'sold'),
               ]),
-              if (((l['documents'] as List?) ?? []).isNotEmpty) ...[for (final doc in l['documents'] as List) TextButton.icon(onPressed: () => openPrivateFile(doc.toString(), c), icon: const Icon(Icons.download), label: Text('Download ${doc.toString().split('/').last}', maxLines: 1, overflow: TextOverflow.ellipsis))],
               if (l['status'] == 'approved') ...[
                 const SizedBox(height: 12),
                 pays.any((p) => p['land_id'] == l['id'] && p['type'] == 'subscription' && p['status'] == 'pending')
@@ -251,6 +245,15 @@ class Sell extends StatelessWidget {
       });
 }
 
+Future<Json> uploadDoc(String label, PlatformFile f) async {
+  final uid = sb.auth.currentUser!.id;
+  final ext = (f.extension ?? 'bin').toLowerCase();
+  final path = '$uid/${DateTime.now().microsecondsSinceEpoch}-${label.hashCode.abs()}.$ext';
+  final type = ext == 'pdf' ? 'application/pdf' : (ext == 'png' ? 'image/png' : 'image/jpeg');
+  await sb.storage.from('request-docs').uploadBinary(path, f.bytes!, fileOptions: FileOptions(contentType: type));
+  return {'label': label, 'path': path, 'name': f.name};
+}
+
 class NewListing extends StatefulWidget {
   final Future<void> Function() onDone;
   const NewListing({super.key, required this.onDone});
@@ -259,22 +262,14 @@ class NewListing extends StatefulWidget {
 }
 
 class _NewListingState extends State<NewListing> {
-  String kind = 'land';
+  static const docs = ['Certificate of Occupancy (C of O)', 'Deed of Assignment', 'Governor’s Consent', 'Survey plan only', 'Other'];
+  static const ptypes = ['House', 'Duplex', 'Apartment', 'Commercial', 'Office', 'Warehouse'];
+  String kind = 'land', doc = docs.first, ptype = ptypes.first;
+  int beds = 3, baths = 2;
+  bool furnished = false, busy = false;
   final t = TextEditingController(), loc = TextEditingController(), size = TextEditingController(), price = TextEditingController(), desc = TextEditingController();
-  List<XFile> imgs = []; final List<String> docs = []; bool busy = false;
-  Future<void> _addLandDocs() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true, withData: true, type: FileType.custom, allowedExtensions: ['pdf','doc','docx','jpg','jpeg','png']);
-    if (result == null) return;
-    try {
-      for (final f in result.files) {
-        if (f.bytes == null) continue;
-        final path = '${sb.auth.currentUser!.id}/land-title/${DateTime.now().microsecondsSinceEpoch}_${f.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_')}';
-        await sb.storage.from('land-documents').uploadBinary(path, f.bytes!);
-        docs.add(path);
-      }
-      if (mounted) setState(() {});
-    } catch (e) { if (mounted) toast(context, 'Could not upload land document: $e'); }
-  }
+  List<XFile> imgs = [];
+
   Future<void> _submit() async {
     final p = double.tryParse(price.text.replaceAll(',', ''));
     if (t.text.trim().isEmpty || p == null || p <= 0) { toast(context, 'Add a title and a valid price.'); return; }
@@ -282,33 +277,65 @@ class _NewListingState extends State<NewListing> {
     try {
       final urls = <String>[];
       for (final x in imgs) { urls.add(await uploadImage(x)); }
-      await sb.from('lands').insert({'kind': kind, 'title': t.text.trim(), 'location': loc.text.trim(), 'size_sqm': double.tryParse(size.text), 'price': p, 'description': desc.text.trim(), 'images': urls, 'documents': docs});
+      final Json details = kind == 'land' ? {'doc': doc} : {'ptype': ptype, 'beds': beds, 'baths': baths, 'furnished': furnished};
+      await sb.from('lands').insert({'kind': kind, 'title': t.text.trim(), 'location': loc.text.trim(), 'size_sqm': double.tryParse(size.text), 'price': p, 'description': desc.text.trim(), 'images': urls, 'details': details});
       for (final x in [t, loc, size, price, desc]) { x.clear(); }
-      if (mounted) { setState(() { imgs = []; docs.clear(); }); toast(context, 'Submitted. We will confirm your listing shortly.'); }
+      if (mounted) { setState(() => imgs = []); toast(context, 'Submitted. We will confirm your listing shortly.'); }
       await widget.onDone();
     } catch (e) {
       if (mounted) toast(context, 'Could not submit: ${e is PostgrestException ? e.message : e}');
     }
     if (mounted) setState(() => busy = false);
   }
+
+  Widget _kindCard(String k, IconData i, String label, String hint) {
+    final on = kind == k, col = kindColor(k);
+    return Expanded(child: GestureDetector(onTap: () => setState(() => kind = k), child: AnimatedContainer(duration: const Duration(milliseconds: 200), padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: on ? col : col.withAlpha(24), borderRadius: BorderRadius.circular(18), border: Border.all(color: col, width: on ? 0 : 1)), child: Column(children: [
+      Icon(i, color: on ? Colors.white : col, size: 30), const SizedBox(height: 6),
+      Text(label, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: on ? Colors.white : col)),
+      Text(hint, textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: on ? Colors.white70 : Colors.grey)),
+    ]))));
+  }
+
+  Widget _step(String label, int v, ValueChanged<int> on) => Row(children: [
+        Expanded(child: Text(label)),
+        IconButton(visualDensity: VisualDensity.compact, onPressed: v > 0 ? () => on(v - 1) : null, icon: const Icon(Icons.remove_circle_outline)),
+        SizedBox(width: 28, child: Text('$v', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800))),
+        IconButton(visualDensity: VisualDensity.compact, onPressed: () => on(v + 1), icon: const Icon(Icons.add_circle_outline)),
+      ]);
+
+  Widget _drop(String label, String value, List<String> items, ValueChanged<String> on) => DropdownButtonFormField<String>(initialValue: value, isExpanded: true, decoration: InputDecoration(labelText: label), items: [for (final x in items) DropdownMenuItem(value: x, child: Text(x, overflow: TextOverflow.ellipsis))], onChanged: (x) => on(x ?? value));
+
   @override
-  Widget build(BuildContext c) => Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Expanded(child: InkWell(onTap: () => setState(() => kind = 'land'), child: Container(padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: kind == 'land' ? const Color(0x1A0F7A47) : Colors.transparent, border: Border.all(color: kind == 'land' ? K.green : Colors.grey.shade400, width: kind == 'land' ? 2 : 1), borderRadius: BorderRadius.circular(16)), child: Column(children: [Icon(Icons.landscape_rounded, size: 30, color: kind == 'land' ? K.green : Colors.grey), const SizedBox(height: 5), const Text('Sell land', style: TextStyle(fontWeight: FontWeight.w800)), grey('Plot, estate or farmland')])))),
-          const SizedBox(width: 10),
-          Expanded(child: InkWell(onTap: () => setState(() => kind = 'property'), child: Container(padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: kind == 'property' ? const Color(0x1AD9A520) : Colors.transparent, border: Border.all(color: kind == 'property' ? K.gold : Colors.grey.shade400, width: kind == 'property' ? 2 : 1), borderRadius: BorderRadius.circular(16)), child: Column(children: [Icon(Icons.apartment_rounded, size: 30, color: kind == 'property' ? K.gold : Colors.grey), const SizedBox(height: 5), const Text('Sell property', style: TextStyle(fontWeight: FontWeight.w800)), grey('House, flat or building')])))),
-        ]),
+  Widget build(BuildContext c) {
+    final land = kind == 'land', col = kindColor(kind);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [_kindCard('land', Icons.terrain_rounded, 'Land', 'Plots, farmland, estates'), const SizedBox(width: 12), _kindCard('property', Icons.apartment_rounded, 'Property', 'Houses, flats, commercial')]),
+      const SizedBox(height: 14),
+      Surface(color: col.withAlpha(16), child: AnimatedSwitcher(duration: const Duration(milliseconds: 250), child: Column(key: ValueKey(kind), crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [Icon(land ? Icons.terrain_rounded : Icons.apartment_rounded, color: col), const SizedBox(width: 8), Text(land ? 'Land details' : 'Property details', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: col))]),
         const SizedBox(height: 14),
-        field(t, 'Title', icon: Icons.title_rounded), field(loc, 'Location', icon: Icons.place_outlined),
-        Row(children: [Expanded(child: field(size, kind == 'land' ? 'Land size (sqm)' : 'Building size (sqm)', kb: TextInputType.number)), const SizedBox(width: 10), Expanded(child: field(price, 'Price (₦)', kb: TextInputType.number))]),
+        field(t, land ? 'Title (e.g. 2 plots, Lekki Phase 2)' : 'Title (e.g. 4-bedroom duplex)', icon: land ? Icons.terrain_rounded : Icons.home_work_outlined),
+        field(loc, 'Location', icon: Icons.place_outlined),
+        if (land) ...[
+          _drop('Land document', doc, docs, (v) => setState(() => doc = v)),
+          const SizedBox(height: 12),
+        ] else ...[
+          _drop('Property type', ptype, ptypes, (v) => setState(() => ptype = v)),
+          const SizedBox(height: 6),
+          _step('Bedrooms', beds, (v) => setState(() => beds = v)),
+          _step('Bathrooms', baths, (v) => setState(() => baths = v)),
+          SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Furnished'), value: furnished, onChanged: (v) => setState(() => furnished = v)),
+        ],
+        Row(children: [Expanded(child: field(size, land ? 'Size (sqm)' : 'Floor / plot (sqm)', kb: TextInputType.number)), const SizedBox(width: 10), Expanded(child: field(price, 'Price (₦)', kb: TextInputType.number))]),
         field(desc, 'Description', lines: 3),
         if (imgs.isNotEmpty) SizedBox(height: 82, child: ListView(scrollDirection: Axis.horizontal, children: [for (final x in imgs) Padding(padding: const EdgeInsets.only(right: 8, bottom: 4), child: Stack(children: [ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(File(x.path), width: 76, height: 76, fit: BoxFit.cover)), Positioned(top: 2, right: 2, child: GestureDetector(onTap: () => setState(() => imgs.remove(x)), child: const CircleAvatar(radius: 10, backgroundColor: Colors.black54, child: Icon(Icons.close, size: 12, color: Colors.white))))]))])),
         Btn('Add pictures (${imgs.length}/8)', outline: true, icon: Icons.add_photo_alternate_outlined, onTap: () async { final f = await pickImages(); setState(() => imgs = [...imgs, ...f].take(8).toList()); }),
-         Btn('Upload ownership / survey documents (${docs.length})', outline: true, icon: Icons.folder_open, onTap: _addLandDocs),
-         if (docs.isNotEmpty) ...[for (final doc in docs) ListTile(dense: true, leading: const Icon(Icons.verified_user_outlined), title: Text(doc.split('/').last, maxLines: 1, overflow: TextOverflow.ellipsis), trailing: IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() => docs.remove(doc))))],
-        Btn('Submit for confirmation', busy: busy, onTap: _submit),
+        Btn(land ? 'Submit land for confirmation' : 'Submit property for confirmation', busy: busy, onTap: _submit),
         grey('You pay 10% only when it sells. After approval, a listing subscription activates it.'),
-      ]));
+      ]))),
+    ]);
+  }
 }
 
 // ---------- Services ----------
@@ -320,28 +347,12 @@ class Services extends StatefulWidget {
 }
 
 class _ServicesState extends State<Services> {
-  final v = TextEditingController(), cd = TextEditingController(), cb = TextEditingController();
-  String type = 'Residential building';
-  final List<String> attachments = [];
-  Future<void> _addDocuments() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true, withData: true, type: FileType.custom, allowedExtensions: ['pdf','doc','docx','jpg','jpeg','png']);
-    if (result == null) return;
+  final v = TextEditingController();
+  Future<void> _verify(Future<void> Function() reload) async {
+    if (v.text.trim().isEmpty) { toast(context, 'Please add the details.'); return; }
     try {
-      for (final f in result.files) {
-        if (f.bytes == null) continue;
-        final ext = (f.extension ?? 'bin').toLowerCase();
-        final path = '${sb.auth.currentUser!.id}/construction/${DateTime.now().microsecondsSinceEpoch}_${f.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_')}';
-        await sb.storage.from('land-documents').uploadBinary(path, f.bytes!, fileOptions: FileOptions(contentType: ext == 'pdf' ? 'application/pdf' : 'application/octet-stream'));
-        attachments.add(path);
-      }
-      if (mounted) setState(() {});
-    } catch (e) { if (mounted) toast(context, 'Document upload failed: $e'); }
-  }
-  Future<void> _send(String kind, String details, num? budget, Future<void> Function() reload) async {
-    if (details.trim().isEmpty) { toast(context, 'Please add the details.'); return; }
-    try {
-      await sb.from('requests').insert({'kind': kind, 'details': details.trim(), 'budget': budget, 'attachments': kind == 'construction' ? attachments : <String>[]});
-      v.clear(); cd.clear(); cb.clear(); attachments.clear();
+      await sb.from('requests').insert({'kind': 'verification', 'details': v.text.trim()});
+      v.clear();
       if (mounted) toast(context, 'Request sent. We will contact you.');
       await reload();
     } catch (e) { if (mounted) toast(context, '$e'); }
@@ -353,23 +364,84 @@ class _ServicesState extends State<Services> {
           const Row(children: [Icon(Icons.verified_rounded, color: K.green), SizedBox(width: 8), Text('Verify land', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16))]),
           const SizedBox(height: 4), grey('Surveyors check title, boundaries and ownership.'), const SizedBox(height: 12),
           field(v, 'Plot / survey number and location', lines: 2),
-          Btn('Request verification', onTap: () => _send('verification', v.text, null, reload)),
+          Btn('Request verification', onTap: () => _verify(reload)),
         ])),
-        Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Row(children: [Icon(Icons.construction_rounded, color: K.gold), SizedBox(width: 8), Text('Apply for construction', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16))]),
-          const SizedBox(height: 8),
-          grey('Useful documents (as applicable): C of O, Deed of Assignment, Survey Plan, Governor’s Consent, Gazette / Excision evidence, allocation letter, building approval and land search report.'),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(value: type, items: [for (final x in ['Residential building', 'Duplex', 'Commercial', 'Fencing and foundation']) DropdownMenuItem(value: x, child: Text(x))], onChanged: (x) => setState(() => type = x ?? type)),
-          const SizedBox(height: 12),
-          field(cd, 'Property and location', lines: 2), field(cb, 'Budget (₦)', kb: TextInputType.number),
-          Btn('Upload plans, survey/title documents and site images (${attachments.length})', outline: true, icon: Icons.upload_file, onTap: _addDocuments),
-          if (attachments.isNotEmpty) ...[for (final a in attachments) ListTile(dense: true, leading: const Icon(Icons.description_outlined), title: Text(a.split('/').last, maxLines: 1, overflow: TextOverflow.ellipsis), trailing: IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() => attachments.remove(a))))],
-          Btn('Apply for construction', onTap: () => _send('construction', '$type — ${cd.text}', num.tryParse(cb.text), reload)),
-        ])),
+        ConstructionForm(onDone: reload),
         sub('My requests'),
         if (rq.isEmpty) empty(Icons.assignment_outlined, 'No requests yet.'),
-        for (final r in rq) Surface(child: Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${r['kind']}'.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)), grey('${r['details']}'), if (((r['attachments'] as List?) ?? []).isNotEmpty) ...[for (final a in r['attachments'] as List) TextButton.icon(onPressed: () => openPrivateFile(a.toString(), c), icon: const Icon(Icons.download), label: Text(a.toString().split('/').last, maxLines: 1, overflow: TextOverflow.ellipsis))]])), Pill('${r['status']}', warn: r['status'] != 'done')])),
+        for (final r in rq) Surface(child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${r['kind']}'.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)), const SizedBox(height: 4), grey('${r['details']}'), if (((r['documents'] as List?) ?? []).isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Row(children: [const Icon(Icons.attach_file_rounded, size: 14, color: K.green), Text(' ${(r['documents'] as List).length} documents attached', style: const TextStyle(fontSize: 12, color: K.green))]))])),
+          Pill('${r['status']}', warn: r['status'] != 'done'),
+        ])),
+      ]));
+}
+
+class ConstructionForm extends StatefulWidget {
+  final Future<void> Function() onDone;
+  const ConstructionForm({super.key, required this.onDone});
+  @override
+  State<ConstructionForm> createState() => _ConstructionFormState();
+}
+
+class _ConstructionFormState extends State<ConstructionForm> {
+  static const types = ['Residential building', 'Duplex', 'Commercial building', 'Fencing and foundation', 'Renovation'];
+  static const times = ['Within 3 months', '3 to 6 months', '6 to 12 months', 'Flexible'];
+  static const slots = [('Land title / ownership document', true), ('Valid ID (NIN, passport or driver’s licence)', true), ('Survey plan', false), ('Building plan / drawing', false)];
+  String type = types.first, timeline = times.last;
+  final prop = TextEditingController(), plot = TextEditingController(), budget = TextEditingController(), notes = TextEditingController();
+  final Map<String, PlatformFile> files = {};
+  bool busy = false;
+
+  Future<void> _pick(String label) async {
+    final r = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'], withData: true);
+    if (r == null || r.files.isEmpty) return;
+    final f = r.files.first;
+    if (f.size > 10 * 1024 * 1024) { if (mounted) toast(context, 'File is too large (max 10 MB).'); return; }
+    setState(() => files[label] = f);
+  }
+
+  Future<void> _submit() async {
+    if (prop.text.trim().isEmpty) { toast(context, 'Tell us the property and its location.'); return; }
+    for (final s in slots) { if (s.$2 && !files.containsKey(s.$1)) { toast(context, 'Please upload: ${s.$1}'); return; } }
+    setState(() => busy = true);
+    try {
+      final docs = <Json>[];
+      for (final e in files.entries) { docs.add(await uploadDoc(e.key, e.value)); }
+      final plotNo = plot.text.trim().isEmpty ? '-' : plot.text.trim();
+      final note = notes.text.trim();
+      final details = 'Type: $type\nProperty: ${prop.text.trim()}\nPlot/title no.: $plotNo\nTimeline: $timeline${note.isEmpty ? '' : '\nNotes: $note'}';
+      await sb.from('requests').insert({'kind': 'construction', 'details': details, 'budget': num.tryParse(budget.text.replaceAll(',', '')), 'documents': docs});
+      for (final x in [prop, plot, budget, notes]) { x.clear(); }
+      if (mounted) { setState(() => files.clear()); toast(context, 'Application sent with your documents.'); }
+      await widget.onDone();
+    } catch (e) {
+      if (mounted) toast(context, 'Could not submit: ${e is PostgrestException ? e.message : e}');
+    }
+    if (mounted) setState(() => busy = false);
+  }
+
+  @override
+  Widget build(BuildContext c) => Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Row(children: [Icon(Icons.construction_rounded, color: K.gold), SizedBox(width: 8), Text('Apply for construction', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16))]),
+        const SizedBox(height: 14),
+        DropdownButtonFormField<String>(initialValue: type, isExpanded: true, decoration: const InputDecoration(labelText: 'What do you want to build?'), items: [for (final x in types) DropdownMenuItem(value: x, child: Text(x))], onChanged: (x) => setState(() => type = x ?? type)),
+        const SizedBox(height: 12),
+        field(prop, 'Property and location', lines: 2, icon: Icons.place_outlined),
+        field(plot, 'Plot / title number', icon: Icons.tag_rounded),
+        Row(children: [Expanded(child: field(budget, 'Budget (₦)', kb: TextInputType.number)), const SizedBox(width: 10), Expanded(child: DropdownButtonFormField<String>(initialValue: timeline, isExpanded: true, decoration: const InputDecoration(labelText: 'Timeline'), items: [for (final x in times) DropdownMenuItem(value: x, child: Text(x, overflow: TextOverflow.ellipsis))], onChanged: (x) => setState(() => timeline = x ?? timeline)))]),
+        const SizedBox(height: 12),
+        field(notes, 'Extra notes (optional)', lines: 2),
+        sub('Documentation'),
+        for (final s in slots)
+          Container(margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.fromLTRB(12, 6, 4, 6), decoration: BoxDecoration(border: Border.all(color: files.containsKey(s.$1) ? K.green : const Color(0x33808080)), borderRadius: BorderRadius.circular(14)), child: Row(children: [
+            Icon(files.containsKey(s.$1) ? Icons.check_circle_rounded : Icons.upload_file_rounded, color: files.containsKey(s.$1) ? K.green : Colors.grey),
+            const SizedBox(width: 10),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(s.$2 ? '${s.$1} *' : s.$1, style: const TextStyle(fontWeight: FontWeight.w700)), grey(files[s.$1]?.name ?? 'PDF, JPG or PNG · max 10 MB')])),
+            TextButton(onPressed: () => _pick(s.$1), child: Text(files.containsKey(s.$1) ? 'Change' : 'Upload')),
+          ])),
+        grey('* Required. Documents are private and only visible to you and LAND METRICS admins.'),
+        const SizedBox(height: 12),
+        Btn('Submit application', busy: busy, onTap: _submit),
       ]));
 }
 
@@ -422,16 +494,6 @@ class _ChatViewState extends State<ChatView> {
     tc.clear();
     try { await sb.from('messages').insert({'thread_user': widget.uid, 'body': b}); } catch (e) { if (mounted) toast(context, 'Message not sent: $e'); }
   }
-  Future<void> _attach() async {
-    final picked = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['pdf','doc','docx','jpg','jpeg','png','xlsx','xls'], withData: true);
-    if (picked == null || picked.files.single.bytes == null) return;
-    final f = picked.files.single;
-    try {
-      final path = '${sb.auth.currentUser!.id}/chat/${DateTime.now().microsecondsSinceEpoch}_${f.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_')}';
-      await sb.storage.from('land-documents').uploadBinary(path, f.bytes!);
-      await sb.from('messages').insert({'thread_user': widget.uid, 'body': 'Shared a file: ${f.name}', 'attachment_path': path, 'attachment_name': f.name});
-    } catch (e) { if (mounted) toast(context, 'Could not send file: $e'); }
-  }
   @override
   Widget build(BuildContext c) {
     final cs = Theme.of(c).colorScheme;
@@ -442,59 +504,10 @@ class _ChatViewState extends State<ChatView> {
         if (m.isEmpty) return empty(Icons.forum_outlined, 'Say hello. Only our admins can see this chat.');
         return ListView.builder(reverse: true, itemCount: m.length, itemBuilder: (_, k) {
           final x = m[k]; final mine = x['sender_id'] == widget.me['id'];
-          return Align(alignment: mine ? Alignment.centerRight : Alignment.centerLeft, child: Container(constraints: BoxConstraints(maxWidth: MediaQuery.of(c).size.width * .75), margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10), decoration: BoxDecoration(color: mine ? K.green : cs.surfaceContainerHighest, borderRadius: BorderRadius.only(topLeft: const Radius.circular(18), topRight: const Radius.circular(18), bottomLeft: Radius.circular(mine ? 18 : 4), bottomRight: Radius.circular(mine ? 4 : 18))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [Text('${x['body']}', style: TextStyle(color: mine ? Colors.white : cs.onSurface)), if (x['attachment_path'] != null) TextButton.icon(onPressed: () => openPrivateFile(x['attachment_path'].toString(), c), icon: Icon(Icons.download, color: mine ? Colors.white : K.green), label: Text('Download ${x['attachment_name'] ?? 'file'}', style: TextStyle(color: mine ? Colors.white : K.green))) ])));
+          return Align(alignment: mine ? Alignment.centerRight : Alignment.centerLeft, child: Container(constraints: BoxConstraints(maxWidth: MediaQuery.of(c).size.width * .75), margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10), decoration: BoxDecoration(color: mine ? K.green : cs.surfaceContainerHighest, borderRadius: BorderRadius.only(topLeft: const Radius.circular(18), topRight: const Radius.circular(18), bottomLeft: Radius.circular(mine ? 18 : 4), bottomRight: Radius.circular(mine ? 4 : 18))), child: Text('${x['body']}', style: TextStyle(color: mine ? Colors.white : cs.onSurface))));
         });
       })),
-      Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Row(children: [IconButton(tooltip: 'Attach document or image', onPressed: _attach, icon: const Icon(Icons.attach_file)), Expanded(child: TextField(controller: tc, textInputAction: TextInputAction.send, onSubmitted: (_) => _send(), decoration: const InputDecoration(hintText: 'Type a message'))), const SizedBox(width: 8), IconButton.filled(tooltip: 'Send', onPressed: _send, icon: const Icon(Icons.send_rounded))])),
+      Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Row(children: [Expanded(child: TextField(controller: tc, textInputAction: TextInputAction.send, onSubmitted: (_) => _send(), decoration: const InputDecoration(hintText: 'Type a message'))), const SizedBox(width: 8), IconButton.filled(tooltip: 'Send', onPressed: _send, icon: const Icon(Icons.send_rounded))])),
     ]);
   }
-}
-
-
-class ProfilePage extends StatefulWidget {
-  final Json me;
-  const ProfilePage({super.key, required this.me});
-  @override
-  State<ProfilePage> createState() => _ProfilePageState();
-}
-class _ProfilePageState extends State<ProfilePage> {
-  late final name = TextEditingController(text: widget.me['full_name'] ?? '');
-  late final phone = TextEditingController(text: widget.me['phone'] ?? '');
-  bool busy = false;
-  String? avatar;
-  @override void initState() { super.initState(); avatar = widget.me['avatar_url'] as String?; }
-  Future<void> _photo() async {
-    final fs = await pickImages(multi: false);
-    if (fs.isEmpty) return;
-    setState(() => busy = true);
-    try {
-      final url = await uploadImage(fs.first);
-      await sb.from('profiles').update({'avatar_url': url}).eq('id', widget.me['id']);
-      if (mounted) setState(() => avatar = url);
-      if (mounted) toast(context, 'Profile picture updated.');
-    } catch (e) { if (mounted) toast(context, 'Could not update picture: $e'); }
-    if (mounted) setState(() => busy = false);
-  }
-  Future<void> _save() async {
-    setState(() => busy = true);
-    try {
-      await sb.from('profiles').update({'full_name': name.text.trim(), 'phone': phone.text.trim()}).eq('id', widget.me['id']);
-      if (mounted) toast(context, 'Profile updated.');
-    } catch (e) { if (mounted) toast(context, 'Could not save profile: $e'); }
-    if (mounted) setState(() => busy = false);
-  }
-  @override
-  Widget build(BuildContext c) => ListView(padding: const EdgeInsets.only(bottom: 24), children: [
-    head(c, 'My profile'),
-    Center(child: Column(children: [
-      CircleAvatar(radius: 48, backgroundImage: avatar == null ? null : NetworkImage(avatar!), child: avatar == null ? const Icon(Icons.person, size: 44) : null),
-      TextButton.icon(onPressed: busy ? null : _photo, icon: const Icon(Icons.camera_alt_outlined), label: const Text('Update profile picture')),
-    ])),
-    Surface(child: Column(children: [
-      field(name, 'Full name'), field(phone, 'Phone number', kb: TextInputType.phone),
-      Btn('Save profile', busy: busy, onTap: _save),
-      grey('Email: ${sb.auth.currentUser?.email ?? ''}'),
-      grey('Login sessions are securely maintained by Supabase. Never share your password or reset code.'),
-    ])),
-  ]);
 }

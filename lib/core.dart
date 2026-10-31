@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'extras.dart';
 
 final sb = Supabase.instance.client;
 typedef Json = Map<String, dynamic>;
@@ -60,7 +60,7 @@ Widget head(BuildContext c, String t) => Padding(padding: const EdgeInsets.only(
 Widget sub(String t) => Padding(padding: const EdgeInsets.only(top: 8, bottom: 10), child: Text(t, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)));
 Widget grey(String t) => Text(t, style: const TextStyle(color: Colors.grey, fontSize: 13));
 Widget empty(IconData i, String t) => Padding(padding: const EdgeInsets.symmetric(vertical: 28), child: Center(child: Column(children: [Icon(i, size: 42, color: Colors.grey), const SizedBox(height: 8), Text(t, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey))])));
-Widget field(TextEditingController c, String label, {TextInputType? kb, int lines = 1, bool obscure = false, IconData? icon}) => Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: c, keyboardType: kb, maxLines: obscure ? 1 : lines, obscureText: obscure, decoration: InputDecoration(labelText: label, prefixIcon: icon == null ? null : Icon(icon, size: 20))));
+Widget field(TextEditingController c, String label, {TextInputType? kb, int lines = 1, bool obscure = false, IconData? icon, Iterable<String>? hints}) => Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: c, keyboardType: kb, maxLines: obscure ? 1 : lines, obscureText: obscure, autofillHints: hints, decoration: InputDecoration(labelText: label, prefixIcon: icon == null ? null : Icon(icon, size: 20))));
 
 class Logo extends StatelessWidget {
   final double s;
@@ -163,9 +163,17 @@ class _QState<T> extends State<Q<T>> {
   }
 }
 
+Color kindColor(String k) => k == 'property' ? const Color(0xFFB7791F) : K.green;
+
+List<String> chips(Json l) {
+  final d = (l['details'] as Map?) ?? const {};
+  if (l['kind'] == 'property') return [if (d['ptype'] != null) '${d['ptype']}', if (d['beds'] != null) '${d['beds']} bed', if (d['baths'] != null) '${d['baths']} bath', if (d['furnished'] == true) 'Furnished'];
+  return [if (d['doc'] != null) '${d['doc']}'];
+}
+
 class Shell extends StatefulWidget {
-  final bool admin; final List<(String, IconData, Widget Function())> tabs;
-  const Shell({super.key, required this.tabs, this.admin = false});
+  final Json me; final bool admin; final List<(String, IconData, Widget Function())> tabs;
+  const Shell({super.key, required this.me, required this.tabs, this.admin = false});
   @override
   State<Shell> createState() => _ShellState();
 }
@@ -174,17 +182,11 @@ class _ShellState extends State<Shell> {
   int i = 0;
   @override
   Widget build(BuildContext c) => Scaffold(
-        appBar: AppBar(titleSpacing: 16, title: Row(children: [const Logo(s: 34), const SizedBox(width: 10), const Text('LAND METRICS', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, fontSize: 17)), if (widget.admin) ...[const SizedBox(width: 8), const Pill('ADMIN', warn: true)]]), actions: [IconButton(tooltip: 'Log out', icon: const Icon(Icons.logout_rounded), onPressed: () => sb.auth.signOut())]),
+        appBar: AppBar(titleSpacing: 16, title: Row(children: [const Logo(s: 34), const SizedBox(width: 10), const Text('LAND METRICS', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, fontSize: 17)), if (widget.admin) ...[const SizedBox(width: 8), const Pill('ADMIN', warn: true)]]), actions: [
+          if (!widget.admin) NotifBell(me: widget.me),
+          Padding(padding: const EdgeInsets.only(left: 4, right: 14), child: GestureDetector(onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => ProfileScreen(me: widget.me))), child: Avatar(url: widget.me['avatar_url'] as String?, name: '${widget.me['full_name'] ?? ''}'))),
+        ]),
         body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: widget.tabs[i].$3()))),
         bottomNavigationBar: NavigationBar(selectedIndex: i, onDestinationSelected: (v) => setState(() => i = v), destinations: [for (final t in widget.tabs) NavigationDestination(icon: Icon(t.$2), label: t.$1)]),
       );
-}
-
-Future<void> openPrivateFile(String path, BuildContext context) async {
-  try {
-    final url = await sb.storage.from('land-documents').createSignedUrl(path, 600);
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-  } catch (e) {
-    if (context.mounted) toast(context, 'Could not open document: $e');
-  }
 }
