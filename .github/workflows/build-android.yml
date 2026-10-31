@@ -1,3 +1,4 @@
+
 name: Build LAND METRICS Android APK
 
 on:
@@ -15,25 +16,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout repository
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Configure Java
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      # 3. Install Flutter
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      # 4. Generate Android project if missing
       - name: Create Android Project
         run: |
           if [ ! -f android/app/src/main/AndroidManifest.xml ]; then
@@ -43,7 +40,6 @@ jobs:
               --platforms android .
           fi
 
-      # 5. Add internet permission
       - name: Configure Internet Permission
         run: |
           grep -q 'android.permission.INTERNET' \
@@ -51,35 +47,24 @@ jobs:
           sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' \
           android/app/src/main/AndroidManifest.xml
 
-      # 6. Verify Flutter installation
-      - name: Flutter Doctor
-        run: flutter doctor -v
-
-      # 7. Install dependencies
       - name: Install Dependencies
         run: flutter pub get
 
-      # 8. Generate Android launcher icons
-      - name: Generate App Icons
+      - name: Generate Android App Icons
         run: dart run flutter_launcher_icons
 
-      # 9. Generate splash screen
       - name: Generate Splash Screen
         run: dart run flutter_native_splash:create
 
-      # 10. Analyze code
       - name: Analyze Flutter Project
         run: flutter analyze --no-fatal-infos
 
-      # 11. Run tests
       - name: Run Flutter Tests
         run: flutter test
 
-      # 12. Build APK
       - name: Build Release APK
         run: flutter build apk --release
 
-      # 13. Upload APK
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
