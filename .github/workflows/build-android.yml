@@ -2,46 +2,88 @@ name: Build LAND METRICS Android APK
 
 on:
   push:
+    branches:
+      - main
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build-android:
+    name: Build Android APK
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+    steps:
+      # 1. Checkout repository
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Configure Java
+      - name: Set up Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
-      - uses: subosito/flutter-action@v2
+      # 3. Install Flutter
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      - name: Create Android project files
-        run: flutter create --org com.landmetrics --project-name landmetrics --platforms android,ios .
-       
-      - name: Add internet permission
+      # 4. Generate Android project if missing
+      - name: Create Android Project
         run: |
-          grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml || \
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+          if [ ! -f android/app/src/main/AndroidManifest.xml ]; then
+            flutter create \
+              --org com.landmetrics \
+              --project-name landmetrics \
+              --platforms android .
+          fi
 
-      - run: flutter pub get
+      # 5. Add internet permission
+      - name: Configure Internet Permission
+        run: |
+          grep -q 'android.permission.INTERNET' \
+          android/app/src/main/AndroidManifest.xml || \
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' \
+          android/app/src/main/AndroidManifest.xml
 
-      - name: Generate app icons
+      # 6. Verify Flutter installation
+      - name: Flutter Doctor
+        run: flutter doctor -v
+
+      # 7. Install dependencies
+      - name: Install Dependencies
+        run: flutter pub get
+
+      # 8. Generate Android launcher icons
+      - name: Generate App Icons
         run: dart run flutter_launcher_icons
 
-      - name: Generate splash screen
+      # 9. Generate splash screen
+      - name: Generate Splash Screen
         run: dart run flutter_native_splash:create
 
-      - run: flutter analyze --no-fatal-infos
+      # 10. Analyze code
+      - name: Analyze Flutter Project
+        run: flutter analyze --no-fatal-infos
 
-      - name: Build APK
+      # 11. Run tests
+      - name: Run Flutter Tests
+        run: flutter test
+
+      # 12. Build APK
+      - name: Build Release APK
         run: flutter build apk --release
 
-      - uses: actions/upload-artifact@v4
+      # 13. Upload APK
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
         with:
-          name: land-metrics-apk
+          name: LAND-METRICS-ANDROID-APK
           path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
