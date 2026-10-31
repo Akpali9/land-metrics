@@ -2,64 +2,46 @@ name: Build LAND METRICS Android APK
 
 on:
   push:
-    branches:
-      - main
   workflow_dispatch:
-
-permissions:
-  contents: read
 
 jobs:
   build-android:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      - name: Create Android Project
-        run: |
-          if [ ! -f android/app/src/main/AndroidManifest.xml ]; then
-            flutter create \
-              --org com.landmetrics \
-              --project-name landmetrics \
-              --platforms android .
-          fi
-
-      - name: Add Internet Permission
+      - name: Create Android project files
+        run: flutter create --org com.landmetrics --project-name landmetrics --platforms android,ios .
+       
+      - name: Add internet permission
         run: |
           grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml || \
           sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' android/app/src/main/AndroidManifest.xml
 
-      - name: Install Dependencies
-        run: flutter pub get
+      - run: flutter pub get
 
-      - name: Generate Android Icons
+      - name: Generate app icons
         run: dart run flutter_launcher_icons
 
-      - name: Generate Splash Screen
+      - name: Generate splash screen
         run: dart run flutter_native_splash:create
 
-      - name: Analyze Project
-        run: flutter analyze --no-fatal-infos
+      - run: flutter analyze --no-fatal-infos
 
-      - name: Build Android APK
+      - name: Build APK
         run: flutter build apk --release
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: LAND-METRICS-APK
+          name: land-metrics-apk
           path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
