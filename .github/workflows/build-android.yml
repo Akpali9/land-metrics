@@ -50,7 +50,7 @@ jobs:
         run: flutter pub get
 
       - name: Generate Android App Icons
-        run: dart run flutter_launcher_icons
+        run: dart run flutter_launcher_icons -f flutter_launcher_icons.yaml
 
       - name: Generate Splash Screen
         run: dart run flutter_native_splash:create
