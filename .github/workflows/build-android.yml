@@ -1,3 +1,4 @@
+```yaml
 name: Build LAND METRICS Android APK
 
 on:
@@ -14,8 +15,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -29,16 +29,30 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Create Android Project Files
+        run: |
+          if [ ! -f android/app/src/main/AndroidManifest.xml ]; then
+            flutter create \
+              --org com.landmetrics \
+              --project-name landmetrics \
+              --platforms android .
+          fi
+
+      - name: Add Internet Permission
+        run: |
+          grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml || \
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+
       - name: Install Dependencies
         run: flutter pub get
 
-      - name: Generate Launcher Icons
+      - name: Generate App Icons
         run: dart run flutter_launcher_icons
 
       - name: Generate Splash Screen
         run: dart run flutter_native_splash:create
 
-      - name: Flutter Analyze
+      - name: Analyze Flutter Project
         run: flutter analyze --no-fatal-infos
 
       - name: Build Release APK
@@ -49,3 +63,5 @@ jobs:
         with:
           name: land-metrics-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+```
