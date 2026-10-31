@@ -1,3 +1,4 @@
+
 name: landmetrics
 description: LAND METRICS - buy and sell verified land and property.
 publish_to: none
@@ -10,12 +11,24 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Backend and authentication
   supabase_flutter: ^2.9.1
+
+  # File and image uploads
   file_picker: ^10.3.3
-  url_launcher: ^6.3.2
   image_picker: ^1.2.0
-  path_provider: ^2.1.5
+  cached_network_image: ^3.4.1
+
+  # External links and device permissions
+  url_launcher: ^6.3.2
   permission_handler: ^12.0.1
+
+  # Local storage and paths
+  path_provider: ^2.1.5
+
+  # Fonts and formatting
+  google_fonts: ^6.3.2
+  intl: ^0.20.2
 
 dev_dependencies:
   flutter_test:
@@ -24,20 +37,27 @@ dev_dependencies:
   flutter_launcher_icons: ^0.14.4
   flutter_native_splash: ^2.4.6
 
-  
 flutter:
   uses-material-design: true
+
   assets:
     - assets/icon.png
+    - assets/icon_fg.png
+    - assets/icon_ios.png
+    - assets/splash.png
 
+# Android launcher icons only
 flutter_launcher_icons:
   android: true
-  ios: true
-  image_path: "assets/icon_ios.png"
-  remove_alpha_ios: true
+  ios: false
+  image_path: "assets/icon.png"
   adaptive_icon_background: "#04513A"
   adaptive_icon_foreground: "assets/icon_fg.png"
 
+# Android splash screen
 flutter_native_splash:
   color: "#04513A"
   image: assets/splash.png
+  android: true
+  ios: false
+  web: false
