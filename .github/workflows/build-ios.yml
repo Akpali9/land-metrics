@@ -19,8 +19,8 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Setup dependencies
-        run: flutter pub get
+      - name: Enable Swift Package Manager
+        run: flutter config --enable-swift-package-manager
 
       - name: Generate iOS project if missing
         run: |
@@ -31,19 +31,23 @@ jobs:
               --platforms ios .
           fi
 
-      - name: Install CocoaPods
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Check iOS configuration
         run: |
-          cd ios
-          pod install
+          flutter --version
+          xcodebuild -version
+          echo "Checking iOS project..."
+          ls -la ios
 
       - name: Analyze Flutter project
         run: flutter analyze --no-fatal-infos
 
-      - name: Build iOS without Apple signing
-        run: |
-          flutter build ios --release --no-codesign
+      - name: Build LAND METRICS iOS
+        run: flutter build ios --release --no-codesign
 
-      - name: Upload iOS build
+      - name: Upload iOS application
         uses: actions/upload-artifact@v4
         with:
           name: land-metrics-ios-build
