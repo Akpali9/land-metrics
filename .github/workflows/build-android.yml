@@ -1,3 +1,4 @@
+
 name: Build LAND METRICS Android APK
 
 on:
@@ -7,31 +8,55 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: subosito/flutter-action@v2
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      - name: Create Android project files
-        run: flutter create --org com.landmetrics --project-name landmetrics --platforms android,ios .
+      - name: Show Flutter version
+        run: |
+          flutter --version
+          dart --version
 
-      - name: Android permissions and minimum SDK
+      - name: Create Android project files if missing
+        run: |
+          if [ ! -d android ]; then
+            flutter create --org com.landmetrics \
+              --project-name landmetrics \
+              --platforms android,ios .
+          else
+            echo "Existing Android project preserved."
+          fi
+
+      - name: Configure Android permissions and SDK
         run: |
           M=android/app/src/main/AndroidManifest.xml
-          for P in INTERNET POST_NOTIFICATIONS; do
-            grep -q "android.permission.$P" $M || sed -i "s#<application#<uses-permission android:name=\"android.permission.$P\"/>\n    <application#" $M
-          done
-          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/; s/minSdkVersion flutter.minSdkVersion/minSdkVersion 24/' android/app/build.gradle* || true
 
-      - run: flutter pub get
+          for P in INTERNET POST_NOTIFICATIONS; do
+            grep -q "android.permission.$P" "$M" || \
+            sed -i "s#<application#<uses-permission android:name=\"android.permission.$P\"/>\n    <application#" "$M"
+          done
+
+          sed -i \
+            's/minSdk = flutter.minSdkVersion/minSdk = 24/; s/minSdkVersion flutter.minSdkVersion/minSdkVersion 24/' \
+            android/app/build.gradle* || true
+
+      - name: Install dependencies
+        run: |
+          flutter pub get
+          flutter pub deps
 
       - name: Generate app icons
         run: dart run flutter_launcher_icons
@@ -39,35 +64,39 @@ jobs:
       - name: Generate splash screen
         run: dart run flutter_native_splash:create
 
-      - run: flutter analyze --no-fatal-infos
+      - name: Analyze Flutter project
+        run: flutter analyze --no-fatal-infos
 
       - name: Run tests
         run: flutter test
 
-      - name: Read Firebase config (optional)
+      - name: Read Firebase configuration
         env:
           GSJ: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
           if [ -n "$GSJ" ]; then
             echo "$GSJ" > /tmp/gs.json
+
             echo "FB_API_KEY=$(jq -r '.client[0].api_key[0].current_key' /tmp/gs.json)" >> $GITHUB_ENV
             echo "FB_APP_ID=$(jq -r '.client[0].client_info.mobilesdk_app_id' /tmp/gs.json)" >> $GITHUB_ENV
             echo "FB_SENDER=$(jq -r '.project_info.project_number' /tmp/gs.json)" >> $GITHUB_ENV
             echo "FB_PROJECT=$(jq -r '.project_info.project_id' /tmp/gs.json)" >> $GITHUB_ENV
           fi
 
-      - name: Build APK
+      - name: Build release APK
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-        run: >
-          flutter build apk --release
-          --dart-define=SENTRY_DSN=$SENTRY_DSN
-          --dart-define=FIREBASE_API_KEY=$FB_API_KEY
-          --dart-define=FIREBASE_APP_ID=$FB_APP_ID
-          --dart-define=FIREBASE_SENDER_ID=$FB_SENDER
-          --dart-define=FIREBASE_PROJECT_ID=$FB_PROJECT
+        run: |
+          flutter build apk --release \
+            --dart-define=SENTRY_DSN="$SENTRY_DSN" \
+            --dart-define=FIREBASE_API_KEY="$FB_API_KEY" \
+            --dart-define=FIREBASE_APP_ID="$FB_APP_ID" \
+            --dart-define=FIREBASE_SENDER_ID="$FB_SENDER" \
+            --dart-define=FIREBASE_PROJECT_ID="$FB_PROJECT"
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload LAND METRICS APK
+        uses: actions/upload-artifact@v4
         with:
           name: land-metrics-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
