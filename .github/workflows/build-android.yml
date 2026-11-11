@@ -2,72 +2,72 @@ name: Build LAND METRICS Android APK
 
 on:
   push:
-    branches:
-      - main
   workflow_dispatch:
-
-permissions:
-  contents: read
 
 jobs:
   build-android:
-    name: Build Android APK
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      - name: Create Android Project
+      - name: Create Android project files
+        run: flutter create --org com.landmetrics --project-name landmetrics --platforms android,ios .
+
+      - name: Android permissions and minimum SDK
         run: |
-          if [ ! -f android/app/src/main/AndroidManifest.xml ]; then
-            flutter create \
-              --org com.landmetrics \
-              --project-name landmetrics \
-              --platforms android .
-          fi
+          M=android/app/src/main/AndroidManifest.xml
+          for P in INTERNET POST_NOTIFICATIONS; do
+            grep -q "android.permission.$P" $M || sed -i "s#<application#<uses-permission android:name=\"android.permission.$P\"/>\n    <application#" $M
+          done
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/; s/minSdkVersion flutter.minSdkVersion/minSdkVersion 24/' android/app/build.gradle* || true
 
-      - name: Configure Internet Permission
-        run: |
-          grep -q 'android.permission.INTERNET' \
-          android/app/src/main/AndroidManifest.xml || \
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' \
-          android/app/src/main/AndroidManifest.xml
+      - run: flutter pub get
 
-      - name: Install Dependencies
-        run: flutter pub get
+      - name: Generate app icons
+        run: dart run flutter_launcher_icons
 
-      - name: Generate Android App Icons
-        run: dart run flutter_launcher_icons -f flutter_launcher_icons.yaml
-
-      - name: Generate Splash Screen
+      - name: Generate splash screen
         run: dart run flutter_native_splash:create
 
-      - name: Analyze Flutter Project
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - run: flutter analyze --no-fatal-infos
 
-      - name: Run Flutter Tests
+      - name: Run tests
         run: flutter test
 
-      - name: Build Release APK
-        run: flutter build apk --release
+      - name: Read Firebase config (optional)
+        env:
+          GSJ: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GSJ" ]; then
+            echo "$GSJ" > /tmp/gs.json
+            echo "FB_API_KEY=$(jq -r '.client[0].api_key[0].current_key' /tmp/gs.json)" >> $GITHUB_ENV
+            echo "FB_APP_ID=$(jq -r '.client[0].client_info.mobilesdk_app_id' /tmp/gs.json)" >> $GITHUB_ENV
+            echo "FB_SENDER=$(jq -r '.project_info.project_number' /tmp/gs.json)" >> $GITHUB_ENV
+            echo "FB_PROJECT=$(jq -r '.project_info.project_id' /tmp/gs.json)" >> $GITHUB_ENV
+          fi
 
-      - name: Upload Android APK
-        uses: actions/upload-artifact@v4
+      - name: Build APK
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: >
+          flutter build apk --release
+          --dart-define=SENTRY_DSN=$SENTRY_DSN
+          --dart-define=FIREBASE_API_KEY=$FB_API_KEY
+          --dart-define=FIREBASE_APP_ID=$FB_APP_ID
+          --dart-define=FIREBASE_SENDER_ID=$FB_SENDER
+          --dart-define=FIREBASE_PROJECT_ID=$FB_PROJECT
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: LAND-METRICS-ANDROID-APK
+          name: land-metrics-apk
           path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
-          retention-days: 30
