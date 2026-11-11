@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'admin.dart';
 import 'auth.dart';
