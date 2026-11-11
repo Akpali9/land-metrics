@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core.dart';
+import 'legal.dart';
+import 'legal_text.dart';
+import 'push.dart';
 
 DateTime _t(dynamic v) => DateTime.tryParse('$v')?.toUtc() ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
 
@@ -96,7 +99,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await sb.from('profiles').update({'avatar_url': url}).eq('id', widget.me['id']);
       await sb.auth.updateUser(UserAttributes(data: {'avatar_url': url}));
       if (mounted) { setState(() => avatar = url); toast(context, 'Profile picture updated.'); }
-    } catch (e) { if (mounted) toast(context, 'Could not update picture: ${e is PostgrestException ? e.message : e}'); }
+    } catch (e) { if (mounted) toast(context, msg(e)); }
     if (mounted) setState(() => busy = false);
   }
   Future<void> _save() async {
@@ -105,7 +108,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await sb.from('profiles').update({'full_name': name.text.trim(), 'phone': phone.text.trim()}).eq('id', widget.me['id']);
       await sb.auth.updateUser(UserAttributes(data: {'full_name': name.text.trim()}));
       if (mounted) toast(context, 'Profile saved.');
-    } catch (e) { if (mounted) toast(context, 'Could not save: $e'); }
+    } catch (e) { if (mounted) toast(context, msg(e)); }
+    if (mounted) setState(() => busy = false);
+  }
+  Future<void> _delete() async {
+    if (!await confirm(context, 'This permanently removes your profile, messages and documents and ends your account. Records of completed payments are kept as required by law. This cannot be undone.') || !mounted) return;
+    setState(() => busy = true);
+    try {
+      final uid = sb.auth.currentUser!.id;
+      for (final bucket in ['request-docs', 'land-images']) {
+        try {
+          final fs = await sb.storage.from(bucket).list(path: uid);
+          if (fs.isNotEmpty) await sb.storage.from(bucket).remove([for (final f in fs) '$uid/${f.name}']);
+        } catch (_) {}
+      }
+      await Push.unregister();
+      await sb.rpc('delete_my_account');
+      if (!mounted) return;
+      Navigator.of(context).popUntil((r) => r.isFirst);
+      await sb.auth.signOut();
+      return;
+    } catch (e) { if (mounted) toast(context, msg(e)); }
     if (mounted) setState(() => busy = false);
   }
   Future<void> _pw() async {
@@ -113,7 +136,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: const Text('Change password'), content: TextField(controller: p, obscureText: true, decoration: const InputDecoration(labelText: 'New password (6+ characters)')), actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')), FilledButton(style: FilledButton.styleFrom(minimumSize: const Size(90, 44)), onPressed: () => Navigator.pop(ctx, true), child: const Text('Save'))]));
     if (ok != true || !mounted) return;
     if (p.text.length < 6) { toast(context, 'Password must be at least 6 characters.'); return; }
-    try { await sb.auth.updateUser(UserAttributes(password: p.text)); if (mounted) toast(context, 'Password updated.'); } on AuthException catch (e) { if (mounted) toast(context, e.message); }
+    try { await sb.auth.updateUser(UserAttributes(password: p.text)); if (mounted) toast(context, 'Password updated.'); } catch (e) { if (mounted) toast(context, msg(e)); }
   }
   @override
   Widget build(BuildContext c) => Scaffold(
@@ -131,7 +154,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           field(name, 'Full name', icon: Icons.person_outline), field(phone, 'Phone number', kb: TextInputType.phone, icon: Icons.phone_outlined),
           Btn('Save changes', busy: busy, onTap: _save),
           Btn('Change password', outline: true, icon: Icons.lock_reset_rounded, onTap: _pw),
-          Btn('Log out', outline: true, icon: Icons.logout_rounded, onTap: () { Navigator.of(context).popUntil((r) => r.isFirst); sb.auth.signOut(); }),
+          Btn('Log out', outline: true, icon: Icons.logout_rounded, onTap: () async { await Push.unregister(); if (!mounted) return; Navigator.of(context).popUntil((r) => r.isFirst); await sb.auth.signOut(); }),
+          const SizedBox(height: 6),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [TextButton(onPressed: () => openLegal(context, 'Privacy Policy', kPrivacy), child: const Text('Privacy Policy')), TextButton(onPressed: () => openLegal(context, 'Terms of Service', kTerms), child: const Text('Terms of Service'))]),
+          if (widget.me['role'] != 'admin') Center(child: TextButton(onPressed: busy ? null : _delete, child: const Text('Delete my account', style: TextStyle(color: Color(0xFFB3261E))))),
+          const SizedBox(height: 6),
+          Center(child: grey('LAND METRICS v1.0.0')),
         ]))),
       );
 }

@@ -5,6 +5,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'extras.dart';
+import 'ai.dart';
+import 'fx.dart';
+import 'push.dart';
+import 'package:sentry_flutter/sentry_flutter.dart' as sentry;
+import 'package:flutter/services.dart';
 
 final sb = Supabase.instance.client;
 typedef Json = Map<String, dynamic>;
@@ -29,11 +34,34 @@ ThemeData theme(Brightness b) {
   return base.copyWith(
     scaffoldBackgroundColor: dark ? const Color(0xFF0B1410) : const Color(0xFFF3F7F4),
     textTheme: GoogleFonts.plusJakartaSansTextTheme(base.textTheme),
+    pageTransitionsTheme: const PageTransitionsTheme(builders: {TargetPlatform.android: CupertinoPageTransitionsBuilder(), TargetPlatform.iOS: CupertinoPageTransitionsBuilder()}),
     appBarTheme: AppBarTheme(backgroundColor: Colors.transparent, elevation: 0, scrolledUnderElevation: 0, foregroundColor: cs.onSurface),
     inputDecorationTheme: InputDecorationTheme(filled: true, fillColor: dark ? const Color(0xFF16221B) : Colors.white, border: border, enabledBorder: border, focusedBorder: border.copyWith(borderSide: BorderSide(color: cs.primary, width: 1.6)), contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14)),
     filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52), shape: shape, textStyle: txt)),
     outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52), shape: shape, textStyle: txt)),
   );
+}
+
+bool isOffline(Object e) {
+  final s = '$e'.toLowerCase();
+  return const ['socketexception', 'failed host lookup', 'clientexception', 'timeoutexception', 'network is unreachable', 'connection refused', 'connection reset', 'connection closed', 'handshakeexception', 'authretryablefetch', 'no address associated', 'software caused connection abort'].any((x) => s.contains(x));
+}
+
+String msg(Object e) {
+  if (isOffline(e)) return 'No internet connection. Check your network and try again.';
+  if (e is String) return e;
+  if (e is FunctionException) return e.status == 429 ? 'You have reached the hourly AI limit. Please try again later.' : 'The AI assistant is unavailable right now. Please try again.';
+  if (e is AuthException) {
+    final m = e.message.toLowerCase();
+    if (m.contains('invalid login')) return 'Incorrect email or password.';
+    if (m.contains('already') && m.contains('regist')) return 'An account with this email already exists.';
+    if (m.contains('expired') || m.contains('token')) return 'That code is invalid or has expired.';
+    if (m.contains('rate') || m.contains('too many') || m.contains('seconds')) return 'Too many attempts. Please wait a moment and try again.';
+    if (m.contains('password')) return 'Please choose a password of at least 6 characters.';
+    return 'We could not complete that. Please try again.';
+  }
+  sentry.Sentry.captureException(e);
+  return 'Something went wrong. Please try again.';
 }
 
 void toast(BuildContext c, String m) => ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
@@ -59,8 +87,8 @@ Future<String> uploadImage(XFile f) async {
 Widget head(BuildContext c, String t) => Padding(padding: const EdgeInsets.only(top: 6, bottom: 12), child: Text(t, style: Theme.of(c).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)));
 Widget sub(String t) => Padding(padding: const EdgeInsets.only(top: 8, bottom: 10), child: Text(t, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)));
 Widget grey(String t) => Text(t, style: const TextStyle(color: Colors.grey, fontSize: 13));
-Widget empty(IconData i, String t) => Padding(padding: const EdgeInsets.symmetric(vertical: 28), child: Center(child: Column(children: [Icon(i, size: 42, color: Colors.grey), const SizedBox(height: 8), Text(t, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey))])));
-Widget field(TextEditingController c, String label, {TextInputType? kb, int lines = 1, bool obscure = false, IconData? icon, Iterable<String>? hints}) => Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: c, keyboardType: kb, maxLines: obscure ? 1 : lines, obscureText: obscure, autofillHints: hints, decoration: InputDecoration(labelText: label, prefixIcon: icon == null ? null : Icon(icon, size: 20))));
+Widget empty(IconData i, String t) => Padding(padding: const EdgeInsets.symmetric(vertical: 28), child: Center(child: Column(children: [BobIcon(i, size: 42), const SizedBox(height: 8), Text(t, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey))])));
+Widget field(TextEditingController c, String label, {TextInputType? kb, int lines = 1, bool obscure = false, IconData? icon, Iterable<String>? hints}) => Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: c, keyboardType: kb, maxLines: obscure ? 1 : lines, obscureText: obscure, enableSuggestions: !obscure, autocorrect: !obscure, autofillHints: hints, decoration: InputDecoration(labelText: label, prefixIcon: icon == null ? null : Icon(icon, size: 20))));
 
 class Logo extends StatelessWidget {
   final double s;
@@ -82,11 +110,11 @@ class Surface extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final dark = Theme.of(c).brightness == Brightness.dark;
-    return Container(
+    return Pressable(enabled: onTap != null, child: Container(
       margin: const EdgeInsets.only(bottom: 14), clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(color: gradient == null ? (color ?? (dark ? const Color(0xFF16221B) : Colors.white)) : null, gradient: gradient, borderRadius: BorderRadius.circular(20), border: Border.all(color: dark ? const Color(0xFF243329) : const Color(0xFFE2EAE4)), boxShadow: dark ? null : const [BoxShadow(color: Color(0x0D000000), blurRadius: 14, offset: Offset(0, 6))]),
       child: Material(color: Colors.transparent, child: InkWell(onTap: onTap, child: Padding(padding: pad ?? const EdgeInsets.all(16), child: child))),
-    );
+    ));
   }
 }
 
@@ -97,8 +125,8 @@ class Btn extends StatelessWidget {
   Widget build(BuildContext c) {
     final label = Row(mainAxisSize: MainAxisSize.min, children: [if (icon != null) ...[Icon(icon, size: 18), const SizedBox(width: 8)], Flexible(child: Text(t, overflow: TextOverflow.ellipsis))]);
     return Padding(padding: const EdgeInsets.only(bottom: 8), child: outline
-        ? OutlinedButton(onPressed: busy ? null : onTap, child: label)
-        : FilledButton(onPressed: busy ? null : onTap, child: busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2.4)) : label));
+        ? OutlinedButton(onPressed: busy || onTap == null ? null : () { HapticFeedback.lightImpact(); onTap!(); }, child: label)
+        : FilledButton(onPressed: busy || onTap == null ? null : () { HapticFeedback.lightImpact(); onTap!(); }, child: busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2.4)) : label));
   }
 }
 
@@ -155,10 +183,7 @@ class _QState<T> extends State<Q<T>> {
   }
   @override
   Widget build(BuildContext c) {
-    if (!has) {
-      if (err != null) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.cloud_off_rounded, size: 42), const SizedBox(height: 8), Text(err is PostgrestException ? (err as PostgrestException).message : 'Could not load. Check your connection.', textAlign: TextAlign.center), TextButton(onPressed: reload, child: const Text('Retry'))]));
-      return const Center(child: CircularProgressIndicator());
-    }
+    if (!has) return err != null ? NoNet(offline: isOffline(err!), onRetry: reload) : const SkeletonList();
     return RefreshIndicator(onRefresh: reload, child: widget.builder(c, data as T, reload));
   }
 }
@@ -181,12 +206,26 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> {
   int i = 0;
   @override
-  Widget build(BuildContext c) => Scaffold(
-        appBar: AppBar(titleSpacing: 16, title: Row(children: [const Logo(s: 34), const SizedBox(width: 10), const Text('LAND METRICS', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, fontSize: 17)), if (widget.admin) ...[const SizedBox(width: 8), const Pill('ADMIN', warn: true)]]), actions: [
-          if (!widget.admin) NotifBell(me: widget.me),
-          Padding(padding: const EdgeInsets.only(left: 4, right: 14), child: GestureDetector(onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => ProfileScreen(me: widget.me))), child: Avatar(url: widget.me['avatar_url'] as String?, name: '${widget.me['full_name'] ?? ''}'))),
-        ]),
-        body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: widget.tabs[i].$3()))),
-        bottomNavigationBar: NavigationBar(selectedIndex: i, onDestinationSelected: (v) => setState(() => i = v), destinations: [for (final t in widget.tabs) NavigationDestination(icon: Icon(t.$2), label: t.$1)]),
-      );
+  void initState() { super.initState(); Push.register(); }
+  @override
+  Widget build(BuildContext c) {
+    final showAi = !widget.admin && widget.tabs[i].$1 != 'Chat';
+    return Scaffold(
+      appBar: AppBar(titleSpacing: 16, title: Row(children: [const Logo(s: 34), const SizedBox(width: 10), const Text('LAND METRICS', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, fontSize: 17)), if (widget.admin) ...[const SizedBox(width: 8), const Pill('ADMIN', warn: true)]]), actions: [
+        if (!widget.admin) NotifBell(me: widget.me),
+        Padding(padding: const EdgeInsets.only(left: 4, right: 14), child: GestureDetector(onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => ProfileScreen(me: widget.me))), child: Avatar(url: widget.me['avatar_url'] as String?, name: '${widget.me['full_name'] ?? ''}'))),
+      ]),
+      body: Column(children: [
+        const OfflineBanner(),
+        Expanded(child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300), switchInCurve: Curves.easeOutCubic,
+          layoutBuilder: (cur, prev) => Stack(fit: StackFit.expand, children: [...prev, if (cur != null) cur]),
+          transitionBuilder: (w, a) => FadeTransition(opacity: a, child: SlideTransition(position: Tween(begin: const Offset(0, .03), end: Offset.zero).animate(a), child: w)),
+          child: KeyedSubtree(key: ValueKey(i), child: widget.tabs[i].$3()),
+        ))))),
+      ]),
+      floatingActionButton: showAi ? const AiFab() : null,
+      bottomNavigationBar: NavigationBar(selectedIndex: i, onDestinationSelected: (v) { HapticFeedback.selectionClick(); setState(() => i = v); }, destinations: [for (final t in widget.tabs) NavigationDestination(icon: Icon(t.$2), label: t.$1)]),
+    );
+  }
 }
