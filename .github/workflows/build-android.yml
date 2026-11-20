@@ -1,4 +1,3 @@
-
 name: Build LAND METRICS Android APK
 
 on:
@@ -38,6 +37,32 @@ jobs:
               --platforms android,ios .
           else
             echo "Existing Android project preserved."
+          fi
+
+      - name: Force AGP 9.3.2 to avoid Lint crash
+        run: |
+          # 1) Try settings.gradle / settings.gradle.kts (modern Flutter template)
+          SETTINGS_FILE=$(find android -maxdepth 2 -name "settings.gradle*" | head -1)
+          if [ -n "$SETTINGS_FILE" ]; then
+            echo "Found settings file: $SETTINGS_FILE"
+            sed -i -E 's/(com\.android\.application"?\s+version\s+")[0-9.]+(")/\19.3.2\2/' "$SETTINGS_FILE"
+            grep -n "com.android.application" "$SETTINGS_FILE" || true
+          else
+            echo "No settings.gradle found; will try build.gradle below."
+          fi
+
+          # 2) Also patch legacy android/build.gradle classpath if present
+          if [ -f android/build.gradle ]; then
+            sed -i -E "s#(classpath\s+'com\.android\.tools\.build:gradle:)[0-9.]+(')#\19.3.2\2#" android/build.gradle
+            grep -n "com.android.tools.build:gradle" android/build.gradle || true
+          fi
+
+          # 3) Ensure Gradle wrapper is new enough for AGP 9.3.2 (requires >= 9.5.0)
+          WRAPPER=android/gradle/wrapper/gradle-wrapper.properties
+          if [ -f "$WRAPPER" ]; then
+            sed -i -E 's#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-9.5.0-all.zip#' "$WRAPPER"
+            echo "--- gradle-wrapper.properties ---"
+            cat "$WRAPPER"
           fi
 
       - name: Configure Android permissions and SDK
